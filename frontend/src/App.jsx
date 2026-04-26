@@ -8,6 +8,7 @@ import { api } from "./convex/api.js";
 function App() {
   const [view, setView] = useState('search');
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Use a state for leads to avoid immediate crash if query fails
   const leadsResult = useQuery(api.leads.getLeads);
@@ -18,9 +19,24 @@ function App() {
 
   useEffect(() => {
     console.log("LeadScout App Initialized");
+    console.log("[v0] LeadsResult:", leadsResult);
     if (!api || !api.leads) {
       console.error("Convex API not detected. Check src/convex/api.js");
     }
+    
+    // If leadsResult is not undefined, we're ready
+    if (leadsResult !== undefined) {
+      setIsLoading(false);
+    }
+  }, [leadsResult]);
+
+  // Timeout after 3 seconds to show the app even if Convex is not responding
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setIsLoading(false);
+    }, 3000);
+    
+    return () => clearTimeout(timeout);
   }, []);
 
   const handleSearch = async (params) => {
@@ -67,7 +83,7 @@ function App() {
   };
 
   // If we are in a loading state and no leads yet
-  if (leadsResult === undefined) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
