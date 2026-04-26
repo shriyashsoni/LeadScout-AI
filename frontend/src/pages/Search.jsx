@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Search as SearchIcon, Sparkles, Target } from 'lucide-react';
 
 const Search = ({ onSearch, isSearching }) => {

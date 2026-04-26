@@ -1,60 +1,83 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Search from './pages/Search';
 import Dashboard from './pages/Dashboard';
 import axios from 'axios';
-import { useQuery, useMutation } from "convex/react";
-import { api } from "./convex/api.js";
+
+const LOCAL_LEADS_KEY = 'leadscout.local.leads';
+
+function readLocalLeads() {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_LEADS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (error) {
+    console.error('Failed to read local leads:', error);
+    return [];
+  }
+}
+
+function writeLocalLeads(leads) {
+  try {
+    window.localStorage.setItem(LOCAL_LEADS_KEY, JSON.stringify(leads));
+  } catch (error) {
+    console.error('Failed to persist local leads:', error);
+  }
+}
 
 function App() {
   const [view, setView] = useState('search');
   const [isSearching, setIsSearching] = useState(false);
-  
-  // Use a state for leads to avoid immediate crash if query fails
-  const leadsResult = useQuery(api.leads.getLeads);
-  const leads = leadsResult || [];
-  
-  const insertLead = useMutation(api.leads.insertLead);
-  const clearLeads = useMutation(api.leads.clearLeads);
+  const [localLeads, setLocalLeads] = useState(() => {
+    return typeof window === 'undefined' ? [] : readLocalLeads();
+  });
+  const backendUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+  const leads = localLeads;
 
   useEffect(() => {
     console.log("LeadScout App Initialized");
-    if (!api || !api.leads) {
-      console.error("Convex API not detected. Check src/convex/api.js");
-    }
   }, []);
 
   const handleSearch = async (params) => {
     setIsSearching(true);
     try {
-      // Backend points to localhost:3001 - this will only work if the backend is also deployed
-      const response = await axios.post('http://localhost:3001/api/search', params);
+      const response = await axios.post(`${backendUrl}/api/search`, params);
       const foundLeads = response.data.leads || [];
       
-      for (const lead of foundLeads) {
-        await insertLead({
-          name: lead.name || 'Unknown',
-          email: lead.email || null,
-          domain: lead.domain || '',
-          source: lead.source || 'unknown',
-          sourceUrl: lead.sourceUrl || '',
-          company: lead.company || null,
-          companySize: lead.companySize || null,
-          location: lead.location || null,
-          linkedin: lead.linkedin || null,
-          twitter: lead.twitter || null,
-          reddit: lead.reddit || null,
-          intentScore: lead.intentScore || 1,
-          intentLabel: lead.intentLabel || 'cold',
-          outreachDraft: lead.outreachDraft || '',
-          rawSnippet: lead.rawSnippet || lead.snippet || '',
-          createdAt: Date.now()
+      const normalizedLeads = foundLeads.map((lead) => ({
+        _id: lead._id || `${lead.sourceUrl || lead.email || lead.name || 'lead'}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: lead.name || 'Unknown',
+        email: lead.email || null,
+        domain: lead.domain || '',
+        source: lead.source || 'unknown',
+        sourceUrl: lead.sourceUrl || '',
+        company: lead.company || null,
+        companySize: lead.companySize || null,
+        location: lead.location || null,
+        linkedin: lead.linkedin || null,
+        twitter: lead.twitter || null,
+        reddit: lead.reddit || null,
+        intentScore: lead.intentScore || 1,
+        intentLabel: lead.intentLabel || 'cold',
+        outreachDraft: lead.outreachDraft || '',
+        rawSnippet: lead.rawSnippet || lead.snippet || '',
+        createdAt: lead.createdAt || Date.now(),
+      }));
+
+      const nextLeads = [...normalizedLeads, ...localLeads.filter((existing) => {
+        return !normalizedLeads.some((incoming) => {
+          return incoming.sourceUrl && existing.sourceUrl
+            ? incoming.sourceUrl === existing.sourceUrl
+            : incoming.email && existing.email
+              ? incoming.email === existing.email
+              : incoming._id === existing._id;
         });
-      }
+      })];
+      setLocalLeads(nextLeads);
+      writeLocalLeads(nextLeads);
       
       setView('dashboard');
     } catch (error) {
       console.error('Search failed:', error);
-      alert('Search failed. If deployed, ensure your backend is also accessible.');
+      alert('Search failed. Make sure the backend is running and reachable.');
     } finally {
       setIsSearching(false);
     }
@@ -62,22 +85,12 @@ function App() {
 
   const handleClear = async () => {
     if (confirm('Clear all leads?')) {
-      await clearLeads();
+      setLocalLeads([]);
+      writeLocalLeads([]);
     }
   };
 
   // If we are in a loading state and no leads yet
-  if (leadsResult === undefined) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-black/10 border-t-black rounded-full animate-spin" />
-          <div className="text-xs font-black uppercase tracking-[0.3em] text-black/20">Establishing Sync</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-white text-black font-sans selection:bg-black selection:text-white">
       <nav className="border-b border-black/5 py-6 px-12 bg-white/80 backdrop-blur-md sticky top-0 z-50">
@@ -109,6 +122,15 @@ function App() {
           </div>
         </div>
       </nav>
+
+      <div className="border-b border-amber-200 bg-amber-50 px-6 py-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-700 mb-1">Open Access</div>
+          <div className="text-sm text-amber-900">
+            This app stores leads locally in your browser, so it works without Convex login or deployment.
+          </div>
+        </div>
+      </div>
 
       <main className="min-h-[calc(100vh-200px)]">
         {view === 'search' ? (
