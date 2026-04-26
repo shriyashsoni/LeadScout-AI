@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Search from './pages/Search';
 import Dashboard from './pages/Dashboard';
 import axios from 'axios';
@@ -9,14 +9,24 @@ function App() {
   const [view, setView] = useState('search');
   const [isSearching, setIsSearching] = useState(false);
   
-  // Convex integration
-  const leads = useQuery(api.leads.getLeads) || [];
+  // Use a state for leads to avoid immediate crash if query fails
+  const leadsResult = useQuery(api.leads.getLeads);
+  const leads = leadsResult || [];
+  
   const insertLead = useMutation(api.leads.insertLead);
   const clearLeads = useMutation(api.leads.clearLeads);
+
+  useEffect(() => {
+    console.log("LeadScout App Initialized");
+    if (!api || !api.leads) {
+      console.error("Convex API not detected. Check src/convex/api.js");
+    }
+  }, []);
 
   const handleSearch = async (params) => {
     setIsSearching(true);
     try {
+      // Backend points to localhost:3001 - this will only work if the backend is also deployed
       const response = await axios.post('http://localhost:3001/api/search', params);
       const foundLeads = response.data.leads || [];
       
@@ -44,7 +54,7 @@ function App() {
       setView('dashboard');
     } catch (error) {
       console.error('Search failed:', error);
-      alert('Search failed. Check if backend is running.');
+      alert('Search failed. If deployed, ensure your backend is also accessible.');
     } finally {
       setIsSearching(false);
     }
@@ -56,12 +66,24 @@ function App() {
     }
   };
 
+  // If we are in a loading state and no leads yet
+  if (leadsResult === undefined) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-black/10 border-t-black rounded-full animate-spin" />
+          <div className="text-xs font-black uppercase tracking-[0.3em] text-black/20">Establishing Sync</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white text-black font-sans selection:bg-black selection:text-white">
       <nav className="border-b border-black/5 py-6 px-12 bg-white/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3 font-black text-2xl tracking-tight cursor-pointer" onClick={() => setView('search')}>
-            <div className="w-10 h-10 bg-black rounded-sm flex items-center justify-center transform rotate-3">
+            <div className="w-10 h-10 bg-black rounded-sm flex items-center justify-center transform rotate-3 shadow-lg shadow-black/10">
               <div className="w-5 h-5 bg-white rounded-full" />
             </div>
             LeadScout
