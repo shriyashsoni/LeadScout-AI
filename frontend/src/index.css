@@ -13,6 +13,17 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  --color-brand-50: #f9f9f9;
+  --color-brand-100: #f0f0f0;
+  --color-brand-200: #e0e0e0;
+  --color-brand-300: #cccccc;
+  --color-brand-400: #999999;
+  --color-brand-500: #000000;
+  --color-brand-600: #000000;
+  --color-brand-700: #000000;
+  --color-brand-800: #000000;
+  --color-brand-900: #000000;
 }
 
 body {
@@ -25,19 +36,6 @@ body {
 
 #root {
   width: 100%;
-}
-
-@theme {
-  --color-brand-50: #f9f9f9;
-  --color-brand-100: #f0f0f0;
-  --color-brand-200: #e0e0e0;
-  --color-brand-300: #cccccc;
-  --color-brand-400: #999999;
-  --color-brand-500: #000000;
-  --color-brand-600: #000000;
-  --color-brand-700: #000000;
-  --color-brand-800: #000000;
-  --color-brand-900: #000000;
 }
 
 /* Custom black & white scrollbar */
