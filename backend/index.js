@@ -15,6 +15,78 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
 const PYTHON_ENRICHER = 'http://localhost:5050';
+const GOOGLE_BLOCKLIST = [
+  'upwork.com',
+  'fiverr.com',
+  'freelancer.com',
+  'indeed.com',
+  'ziprecruiter.com',
+  'glassdoor.com',
+  'linkedin.com/jobs',
+  'linkedin.com/hiring',
+  'toptal.com',
+  'guru.com',
+  'peopleperhour.com',
+];
+const REDDIT_BLOCKLIST = [
+  'UnrealEngine5',
+  'FifaCareers',
+  'SoloDevelopment',
+  'teenagers',
+  'memes',
+];
+const COMMUNITY_HOST_HINTS = [
+  'reddit.com',
+  'quora.com',
+  'indiehackers.com',
+  'community.',
+  'forum.',
+  'forums.',
+];
+const BUYING_INTENT_TERMS = [
+  'looking for',
+  'need',
+  'seeking',
+  'recommend',
+  'hire',
+  'hiring',
+  'agency',
+  'freelancer',
+  'contractor',
+  'developer',
+  'designer',
+  'help with',
+  'build',
+  'project',
+];
+const STRONG_BUYING_INTENT_TERMS = [
+  "i'm looking for",
+  'i am looking for',
+  'we need',
+  'i need',
+  'can anyone recommend',
+  'who do you recommend',
+  'looking for someone',
+  'need help with',
+  'looking to hire',
+  'hiring',
+];
+const NEGATIVE_PROVIDER_TERMS = [
+  'our services',
+  'we offer',
+  'best agencies',
+  'best agency',
+  'outsourcing',
+  'for hire',
+  'hire top',
+  'website redesign service',
+  'digital marketing agency',
+  'top web design',
+  'web design services',
+  'job opening',
+  'jobs',
+  'salary',
+];
 
 // ------------------------------------------------------------------
 // Health check
@@ -30,6 +102,69 @@ function getDomain(url) {
   } catch {
     return url;
   }
+}
+
+function normalizeText(value) {
+  return String(value || '').toLowerCase();
+}
+
+function buildSearchQuery(keyword, niche) {
+  return [
+    `"${keyword}"`,
+    `"${niche}"`,
+    '("looking for" OR "need" OR "recommend" OR "who do you recommend" OR "help with" OR "looking to hire")',
+    '(site:reddit.com OR site:quora.com OR site:indiehackers.com OR site:community.shopify.com OR site:forum.webflow.com)',
+    '-site:upwork.com',
+    '-site:fiverr.com',
+    '-site:freelancer.com',
+    '-jobs',
+    '-job',
+    '-salary',
+    '-services',
+    '-agency',
+  ].join(' ');
+}
+
+function hasBuyingIntent(text) {
+  const haystack = normalizeText(text);
+  return BUYING_INTENT_TERMS.some((term) => haystack.includes(term));
+}
+
+function isBlockedDomain(url) {
+  const normalized = normalizeText(url);
+  return GOOGLE_BLOCKLIST.some((domain) => normalized.includes(domain));
+}
+
+function isBlockedSubreddit(subreddit) {
+  return REDDIT_BLOCKLIST.includes(subreddit || '');
+}
+
+function isCommunityUrl(url) {
+  const normalized = normalizeText(url);
+  return COMMUNITY_HOST_HINTS.some((hint) => normalized.includes(hint));
+}
+
+function filterRawLead(lead) {
+  if (!lead.sourceUrl || !lead.snippet) return false;
+  const combinedText = normalizeText(`${lead.name} ${lead.snippet} ${lead.rawSnippet || ''}`);
+
+  if (lead.source.startsWith('google') && isBlockedDomain(lead.sourceUrl)) {
+    return false;
+  }
+
+  if (lead.source === 'reddit' && isBlockedSubreddit(lead.subreddit)) {
+    return false;
+  }
+
+  if (NEGATIVE_PROVIDER_TERMS.some((term) => combinedText.includes(term))) {
+    return false;
+  }
+
+  if (lead.source.startsWith('google') && !isCommunityUrl(lead.sourceUrl)) {
+    return STRONG_BUYING_INTENT_TERMS.some((term) => combinedText.includes(term));
+  }
+
+  return hasBuyingIntent(combinedText);
 }
 
 // ------------------------------------------------------------------
@@ -58,11 +193,12 @@ app.post('/api/search', async (req, res) => {
   console.log(`\n🔍 LeadScout search: "${keyword}" | niche: "${niche}" | target: ${targetCount}`);
 
   try {
+    const searchQuery = buildSearchQuery(keyword, niche);
     let rawLeads = [];
 
     // ── 1. SerpAPI (paid, highest quality) ──────────────────────────
     try {
-      const googleResults = await searchGoogle(keyword, Math.min(targetCount, 100));
+      const googleResults = await searchGoogle(searchQuery, Math.min(targetCount * 3, 100));
       rawLeads.push(
         ...googleResults.map(r => ({
           name: r.title || '',
@@ -78,7 +214,7 @@ app.post('/api/search', async (req, res) => {
       console.warn('  ⚠️  SerpAPI failed, falling back to free scraper:', e.message);
 
       // Fallback: free Google scrape via Python
-      const pyResult = await tryPython('/scrape/google', { keyword, num: Math.ceil(targetCount / 2) });
+      const pyResult = await tryPython('/scrape/google', { keyword: searchQuery, num: Math.min(targetCount * 2, 50) });
       if (pyResult?.results) {
         rawLeads.push(...pyResult.results.map(r => ({
           name: r.title || '',
@@ -94,16 +230,17 @@ app.post('/api/search', async (req, res) => {
 
     // ── 2. Reddit (free public API) ─────────────────────────────────
     try {
-      const redditResults = await searchReddit(keyword, Math.ceil(targetCount / 2));
+      const redditResults = await searchReddit(`${keyword} ${niche}`, Math.min(targetCount * 2, 40));
       rawLeads.push(
         ...redditResults.map(r => ({
-          name: r.author || 'Reddit User',
+          name: r.title || r.author || 'Reddit User',
           source: 'reddit',
           sourceUrl: r.url || '',
           snippet: r.snippet || '',
           domain: 'reddit.com',
           rawSnippet: r.snippet || '',
           reddit: r.url || null,
+          subreddit: r.subreddit || '',
         }))
       );
       console.log(`  ✅ Reddit: ${redditResults.length} results`);
@@ -143,6 +280,8 @@ app.post('/api/search', async (req, res) => {
       seen.add(l.sourceUrl);
       return true;
     });
+
+    rawLeads = rawLeads.filter(filterRawLead);
 
     // Limit to target count
     rawLeads = rawLeads.slice(0, targetCount);
