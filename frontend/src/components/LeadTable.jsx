@@ -1,4 +1,3 @@
-import React from 'react';
 import ScoreBadge from './ScoreBadge';
 import { ExternalLink, Mail, Link2, X } from 'lucide-react';
 

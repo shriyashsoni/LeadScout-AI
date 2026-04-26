@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Download, MailPlus, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import axios from 'axios';
 
 const ExportBar = ({ selectedLeads }) => {
   const [isCreatingDrafts, setIsCreatingDrafts] = useState(false);
+  const backendUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 
   const handleExport = () => {
     if (selectedLeads.length === 0) return;
@@ -37,7 +38,7 @@ const ExportBar = ({ selectedLeads }) => {
     
     setIsCreatingDrafts(true);
     try {
-      const response = await axios.post('http://localhost:3001/api/gmail/drafts', {
+      const response = await axios.post(`${backendUrl}/api/gmail/drafts`, {
         leads: selectedLeads
       });
       
@@ -45,7 +46,7 @@ const ExportBar = ({ selectedLeads }) => {
       alert(`Created ${successCount} drafts.`);
     } catch (error) {
       console.error('Gmail Draft Error:', error);
-      const authResponse = await axios.get('http://localhost:3001/api/gmail/auth');
+      const authResponse = await axios.get(`${backendUrl}/api/gmail/auth`);
       window.open(authResponse.data.url, '_blank');
       alert('Authentication required. Check the new tab.');
     } finally {

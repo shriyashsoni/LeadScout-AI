@@ -1,5 +1,3 @@
-import React from 'react';
-
 const ScoreBadge = ({ label, score }) => {
   const styles = {
     hot: 'bg-black text-white border-black',

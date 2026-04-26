@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import LeadTable from '../components/LeadTable';
 import ExportBar from '../components/ExportBar';
 import { Filter, Search as SearchIcon, ArrowLeft, RefreshCw } from 'lucide-react';
